@@ -6,65 +6,41 @@
 #include "../headers/config.h"
 
 struct IndexPart {
-    long uid;
-    long address;
-    size_t byte_size;
+    int32_t uid;
+    int64_t address;
+    size_t size;
 };
 
 int init_procfs() {
     FILE *fptr;
-    char filename[128];
+    char* filename;
     int pid = getpid();
 
     // Create secrets file
-    sprintf(filename, "/proc/%d/%s", pid, SECRET_FILENAME);
+    filename = get_procfs_filename(SECRET_FILENAME);
     fptr = fopen(filename, "w");
     check_file_open_error(fptr, "Secret file creation error");
     fclose(fptr);
 
     // Create indexes file
-    sprintf(filename, "/proc/%d/%s", pid, INDEX_FILENAME);
+    filename = get_procfs_filename(INDEX_FILENAME);
     fptr = fopen(filename, "w");
     check_file_open_error(fptr, "Secret index file creation error");
     fclose(fptr);
-}
 
-void create_secret(int uid, const char* secret) {
-    char* filename = get_procfs_filename(INDEX_FILENAME);
-
-    struct IndexPart index;
-    index.uid = uid;
-    index.address = get_file_size(filename);
-    index.byte_size = strlen(secret);
-    
-    FILE* fptr = fopen(filename, "a");
-    check_file_open_error(fptr, "Secret indexes opening error");
-    fwrite(&index, sizeof(struct IndexPart), 1, fptr);
-    fclose(fptr);
-    free(filename);
-
-    filename = get_procfs_filename(SECRET_FILENAME);
-    FILE* fptr = fopen(filename, "a");
-    check_file_open_error(fptr, "Secret file opening error");
-    fwrite(secret, strlen(secret), 1, fptr);
-    fclose(fptr);
     free(filename);
 }
 
-char* read_secret(struct IndexPart secret_addr) {
-    
-}
-
-struct IndexPart* get_secret_addr(int uid, int index) {
-    size_t counter;
+struct IndexPart* get_secret_addr(int32_t uid, int index) {
+    size_t counter = 0;
     struct IndexPart* current_index = malloc(sizeof(struct IndexPart));
     FILE* fptr = fopen(get_procfs_filename(INDEX_FILENAME), "r");
     check_file_open_error(fptr, "Secret indexes opening error");
-    while (fgets((char *) current_index, sizeof(struct IndexPart), fptr)) {
+    while (fread(current_index, sizeof(struct IndexPart), 1, fptr)) {
         if (current_index->uid != uid) continue;
-        
-        counter++;
+
         if (counter == index) return current_index;
+        counter++;
     }
 
     free(current_index);
@@ -72,7 +48,45 @@ struct IndexPart* get_secret_addr(int uid, int index) {
     return NULL;
 }
 
-int main() {
-    printf("%d", get_file_size("README.md"));
-    return 0;
+void create_secret(int32_t uid, const char* secret) {
+    char* filename = get_procfs_filename(SECRET_FILENAME);
+
+    struct IndexPart index;
+    index.uid = uid;
+    index.address = get_file_size(filename);
+    index.size = strlen(secret);
+
+    free(filename);
+
+    filename = get_procfs_filename(INDEX_FILENAME);
+    FILE* fptr = fopen(filename, "a");
+    check_file_open_error(fptr, "Secret indexes opening error");
+    fwrite(&index, sizeof(struct IndexPart), 1, fptr);
+    fclose(fptr);
+    free(filename);
+
+    filename = get_procfs_filename(SECRET_FILENAME);
+    fptr = fopen(filename, "a");
+    check_file_open_error(fptr, "Secret file opening error");
+    fwrite(secret, strlen(secret), 1, fptr);
+    fclose(fptr);
+    free(filename);
 }
+
+char* read_secret(int32_t uid, int index) {
+    struct IndexPart* secret_info = get_secret_addr(uid, index);
+    if (secret_info == 0) return NULL;
+
+    char* filename = get_procfs_filename(SECRET_FILENAME);
+    char* buffer = malloc(secret_info->size + 1);
+
+    FILE* fptr = fopen(filename, "r");
+    check_file_open_error(fptr, "Secret indexes opening error");
+    fseek(fptr, secret_info->address, SEEK_SET);
+    fread(buffer, 1, secret_info->size, fptr);
+    fclose(fptr);
+    free(filename);
+
+    return buffer;
+}
+

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "config.h"
 
 extern inline void check_file_open_error(FILE* status, const char* error_msg) {
     if (status == NULL) {
@@ -14,7 +15,7 @@ extern inline void check_file_open_error(FILE* status, const char* error_msg) {
 
 extern inline char* get_procfs_filename(char* filename) {
     char* buffer = (char*) malloc(strlen(filename) + 10);
-    sprintf(buffer, "/proc/%d/%s", getpid(), filename);
+    sprintf(buffer, FILENAME_FORMAT, getpid(), filename);
     return buffer;
 }
 

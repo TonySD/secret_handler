@@ -38,7 +38,6 @@ struct IndexPart* get_secret_addr(int32_t uid, int index) {
     check_file_open_error(fptr, "Secret indexes opening error");
     while (fread(current_index, sizeof(struct IndexPart), 1, fptr)) {
         if (current_index->uid != uid) continue;
-
         if (counter == index) return current_index;
         counter++;
     }
@@ -46,6 +45,21 @@ struct IndexPart* get_secret_addr(int32_t uid, int index) {
     free(current_index);
     fclose(fptr);
     return NULL;
+}
+
+size_t count_secrets_for_uid(int32_t uid) {
+    size_t counter = 0;
+    struct IndexPart* current_index = malloc(sizeof(struct IndexPart));
+    FILE* fptr = fopen(get_procfs_filename(INDEX_FILENAME), "r");
+    check_file_open_error(fptr, "Secret indexes opening error");
+    while (fread(current_index, sizeof(struct IndexPart), 1, fptr)) {
+        if (current_index->uid == uid) ++counter;
+    }
+
+    free(current_index);
+    fclose(fptr);
+
+    return counter;
 }
 
 void create_secret(int32_t uid, const char* secret) {
@@ -78,7 +92,7 @@ char* read_secret(int32_t uid, int index) {
     if (secret_info == 0) return NULL;
 
     char* filename = get_procfs_filename(SECRET_FILENAME);
-    char* buffer = malloc(secret_info->size + 1);
+    char* buffer = calloc(secret_info->size + 1, 1);
 
     FILE* fptr = fopen(filename, "r");
     check_file_open_error(fptr, "Secret indexes opening error");
@@ -90,3 +104,37 @@ char* read_secret(int32_t uid, int index) {
     return buffer;
 }
 
+void delete_secret(int32_t uid, int index) {
+    size_t counter = 0, index_in_file = 0;
+    size_t size_of_index_part = sizeof(struct IndexPart);
+    struct IndexPart* current_index = malloc(size_of_index_part);
+
+    FILE* fptr = fopen(get_procfs_filename(INDEX_FILENAME), "r+");
+    check_file_open_error(fptr, "Secret indexes opening error");                        
+
+    while (fread(current_index, sizeof(struct IndexPart), 1, fptr)) {
+        ++index_in_file;
+        if (current_index->uid != uid) continue;
+        if (counter == index) break;
+        ++counter;
+    }
+
+    // Clean index file
+    char* buffer = malloc(size_of_index_part);
+    memset(buffer, 0, size_of_index_part);
+    fseek(fptr, size_of_index_part * (index_in_file - 1), SEEK_SET);
+    fwrite(buffer, 1, size_of_index_part, fptr);
+    free(buffer);
+    fclose(fptr);
+
+    // Clean secrets file
+    buffer = malloc(current_index->size);
+    fptr = fopen(get_procfs_filename(SECRET_FILENAME), "r+");
+    memset(buffer, 0, current_index->size);
+    fseek(fptr, current_index->address, SEEK_SET);
+    fwrite(buffer, 1, current_index->size, fptr);
+    free(buffer);
+    fclose(fptr);
+
+    free(current_index);
+}
